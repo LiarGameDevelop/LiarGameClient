@@ -14,13 +14,17 @@ class Message {
     }
 }
 
+var test=1
+var ip=(test===0)? "127.0.0.1":"13.125.250.0"
+
 var stompClient = null
 var _gconnectionInfo = null
 var senderId = guid()
 function getConnectionInfo() {
     return _gconnectionInfo
 }
-const socketEndPoint = 'http://127.0.0.1:8080/ws-connection'
+const socketEndPoint = `http://${ip}:8080/ws-connection`
+console.info("JBJB "+socketEndPoint)
 
 function setConnected(connected) {
     $("#connect").prop("disabled", connected)
@@ -37,7 +41,7 @@ function setConnected(connected) {
 //make room
 function requestMakeRoom(param) {
     $.post({
-        url: 'http://127.0.0.1:8080/room',
+        url: `http://${ip}:8080/room`,
         //data: param,
         data: JSON.stringify({ "maxPersonCount": 5, "roomName": "my room","ownerName":"chulsoo"}),
         contentType: "application/json",
@@ -57,7 +61,7 @@ function requestMakeRoom(param) {
 
 function enterRoom(param) {
     $.post({
-        url: 'http://127.0.0.1:8080/room/enter',
+        url: `http://${ip}:8080/room/enter`,
         //data: param,
         data: { "roomId": param.roomId, "senderId": param.senderId },
         contentType: "application/json",
@@ -74,7 +78,7 @@ function enterRoom(param) {
 
 function leaveRoom(param) {
     $.post({
-        url: 'http://127.0.0.1:8080/room/enter',
+        url: `http://${ip}:8080/room/leave`,
         //data: param,
         data: { "roomId": param.roomId, "senderId": param.senderId },
         contentType: "application/json",
@@ -93,7 +97,7 @@ function leaveRoom(param) {
 function deleteRoom() {
     $.ajax({
         type: "DELETE",
-        url: 'http://127.0.0.1:8080/room',
+        url: `http://${ip}:8080/room`,
         //TODO: change delete room param
         data: { "roomId": connectionInfo.roomId, "ownerId": connectionInfo.senderId },
         contentType: "application/json",
@@ -111,7 +115,7 @@ function deleteRoom() {
 //get room info
 function getRooms(roomId) {
     $.get({
-        url: `http://127.0.0.1:8080/room?roomId=${roomId}`,
+        url: `http://${ip}:8080/room?roomId=${roomId}`,
         //data: param,
         success: function (response) {
             //connect()
