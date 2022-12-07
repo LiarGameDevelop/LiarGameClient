@@ -8,10 +8,9 @@ class ConnectionInfo {
     }
 }
 class Message {
-    constructor(message, senderId, roomId) {
+    constructor(message, senderId) {
         this.message = message
         this.senderId = senderId
-        this.roomId = roomId
     }
 }
 
@@ -21,7 +20,7 @@ var senderId = guid()
 function getConnectionInfo() {
     return _gconnectionInfo
 }
-const socketEndPoint = 'http://13.125.250.0:8080/ws-connection'
+const socketEndPoint = 'http://127.0.0.1:8080/ws-connection'
 
 function setConnected(connected) {
     $("#connect").prop("disabled", connected)
@@ -38,9 +37,9 @@ function setConnected(connected) {
 //make room
 function requestMakeRoom(param) {
     $.post({
-        url: 'http://13.125.250.0:8080/room',
+        url: 'http://127.0.0.1:8080/room',
         //data: param,
-        data: JSON.stringify({ "maxPersonCount": 5, "roomName": "my room", "senderId": senderId }),
+        data: JSON.stringify({ "maxPersonCount": 5, "roomName": "my room","ownerName":"chulsoo"}),
         contentType: "application/json",
         dataType: "json",
         success: function (response) {
@@ -58,7 +57,7 @@ function requestMakeRoom(param) {
 
 function enterRoom(param) {
     $.post({
-        url: 'http://13.125.250.0:8080/room/enter',
+        url: 'http://127.0.0.1:8080/room/enter',
         //data: param,
         data: { "roomId": param.roomId, "senderId": param.senderId },
         contentType: "application/json",
@@ -75,7 +74,7 @@ function enterRoom(param) {
 
 function leaveRoom(param) {
     $.post({
-        url: 'http://13.125.250.0:8080/room/enter',
+        url: 'http://127.0.0.1:8080/room/enter',
         //data: param,
         data: { "roomId": param.roomId, "senderId": param.senderId },
         contentType: "application/json",
@@ -83,6 +82,7 @@ function leaveRoom(param) {
         success: function (response) {
             console.info(JSON.stringify(response))
             connectionInfo = new ConnectionInfo(response)
+            connect(connectionInfo)
         },
         error: function (response) {
             console.info(JSON.stringify(response))
@@ -93,7 +93,7 @@ function leaveRoom(param) {
 function deleteRoom() {
     $.ajax({
         type: "DELETE",
-        url: 'http://13.125.250.0:8080/room',
+        url: 'http://127.0.0.1:8080/room',
         //TODO: change delete room param
         data: { "roomId": connectionInfo.roomId, "ownerId": connectionInfo.senderId },
         contentType: "application/json",
@@ -111,7 +111,7 @@ function deleteRoom() {
 //get room info
 function getRooms(roomId) {
     $.get({
-        url: `http://13.125.250.0:8080/room?roomId=${roomId}`,
+        url: `http://127.0.0.1:8080/room?roomId=${roomId}`,
         //data: param,
         success: function (response) {
             //connect()
@@ -140,19 +140,46 @@ function connect(connectionInfo) {
     stompClient = Stomp.over(socket)
     console.log("stompClient :" + JSON.stringify(stompClient))
 
-    //동작안함.
-    stompClient.connect({}, function (frame) {
+    stompClient.connect({"username":"chulsoo","roomId":connectionInfo.roomId}, function (frame) {
         setConnected(true)
         console.log('Connected: ' + frame)
         console.info('_gconnectionInfo :' + JSON.stringify(getConnectionInfo()))
 
         console.info('_gconnectionInfo room id: ' + getConnectionInfo().roomId)
 
-        stompClient.subscribe(`/subscribe/room/${getConnectionInfo().roomId}`, function (greeting) {
-            addChat(greeting)
+        //클라이언트끼리 대화
+        stompClient.subscribe(`/subscribe/room/${getConnectionInfo().roomId}/chat`, function (frame) {
+            addChat(frame.body)
+        })
+
+        //사람 들어온것 =>웹소켓, STOMP 연결하면 자동으로 날라오는것.
+        stompClient.subscribe(`/subscribe/room.login/${getConnectionInfo().roomId}`, function (frame) {
+            //addChat(greeting)
+            console.info(`Someone entered in room id ${getConnectionInfo().roomId}`)
+            addChat("entered:"+frame.body);
+        })
+
+        //사람 나간것
+        stompClient.subscribe(`/subscribe/room.logout/${getConnectionInfo().roomId}`, function (frame) {
+            console.info(`Someone left from room id ${getConnectionInfo().roomId}`)
+            addChat("left:"+frame.body);
+        })
+
+        //게임서버랑 통신 =>방장:게임을 시작하고, 게임설정(카테고리 설정...)
+        stompClient.subscribe(`/subscribe/system/private/${getConnectionInfo().roomId}`, function (frame) {
+            addChat("gameserver :"+frame.body);
         })
     })
 }
+function sleep(milliseconds) {
+    const date = Date.now();
+    let currentDate = null;
+    do {
+      currentDate = Date.now();
+    } while (currentDate - date < milliseconds);
+  }
+  
+
 
 function disconnect() {
     if (stompClient !== null) {
@@ -169,11 +196,75 @@ function guid() {
     return s4() + s4() + '-' + s4() + '-' + s4() + '-' + s4() + '-' + s4() + s4() + s4();
 }
 
-function sendName() {
-    var message = new Message($("#text-data").val(), senderId, _gconnectionInfo.roomId)
+function sendGameStart() {
+    // var message = new Message($("#text-data").val(), senderId)
+    // console.info(`send info : ${JSON.stringify(message)}`)
+
+    // //게임서버용도 추가되어함.
+    // stompClient.send(`/publish/messages/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+
+
+    // //서버에 요청하는것
+    // // ws://publish/room.system '{method:{startGame}, body:{}}'
+    // // ws://publish/room.system/{roomId}/startGame '{body:{}}'
+    // stompClient.send(`/publish/room.system/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+    // //POST API
+    // //http://liargame/methodA '{JSON format}'
+    var message = {
+        "senderId":_gconnectionInfo.ownerId,
+        "message":{
+            "method":"startGame",
+            "body":
+                JSON.stringify({"round":3,
+                "category":["food"],
+                "turn":1
+            })
+            
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/private/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+}
+
+function sendChat() {
+    var message = new Message($("#text-data").val(), senderId)
     console.info(`send info : ${JSON.stringify(message)}`)
 
-    stompClient.send('/publish/messages', {}, JSON.stringify(message))
+    // //게임서버용도 추가되어함.
+    stompClient.send(`/publish/messages/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+
+
+    // //서버에 요청하는것
+    // // ws://publish/room.system '{method:{startGame}, body:{}}'
+    // // ws://publish/room.system/{roomId}/startGame '{body:{}}'
+    // stompClient.send(`/publish/room.system/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+    // //POST API
+    // //http://liargame/methodA '{JSON format}'
+}
+
+function sendRoundStart() {
+    // var message = new Message($("#text-data").val(), senderId)
+    // console.info(`send info : ${JSON.stringify(message)}`)
+
+    // //게임서버용도 추가되어함.
+    // stompClient.send(`/publish/messages/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+
+
+    // //서버에 요청하는것
+    // // ws://publish/room.system '{method:{startGame}, body:{}}'
+    // // ws://publish/room.system/{roomId}/startGame '{body:{}}'
+    // stompClient.send(`/publish/room.system/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+    // //POST API
+    // //http://liargame/methodA '{JSON format}'
+    var message = {
+        "senderId":_gconnectionInfo.ownerId,
+        "message":{
+            "method":"startRound",
+            "body":"{}"
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/private/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
 }
 
 function addChat(message) {
@@ -185,7 +276,21 @@ $(function () {
         e.preventDefault()
     })
     $("#make").click(function () { requestMakeRoom(); })
-    $("#connect").click(function () { connect() })
+    $("#connect").click(function () { 
+        var param;
+        if($("#roomId").val())
+            param.roomId = $("#roomId").val()
+        else{
+            console.error("Insert room id")
+            alert("Insert room id")
+            return;
+        }
+        param.senderId = guid()
+        //enterRoom(param);
+        connect()
+    })
     $("#disconnect").click(function () { disconnect() })
-    $("#send").click(function () { sendName() })
+    $("#send").click(function () { sendChat() })
+    $("#game_start").click(function () { sendGameStart() })
+    $("#round_start").click(function () { sendRoundStart() })
 })
