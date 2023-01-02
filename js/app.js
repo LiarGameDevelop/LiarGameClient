@@ -1,10 +1,12 @@
 class ConnectionInfo {
-    constructor(maxPersonCount, ownerId, roomId, roomName, personCount) {
+    constructor(maxPersonCount, ownerId, roomId, roomName, personCount,userList) {
         this.maxPersonCount = maxPersonCount
         this.ownerId = ownerId
         this.roomId = roomId
         this.roomName = roomName
         this.personCount = personCount
+        this.userList=userList
+        this.user= null
     }
 }
 class Message {
@@ -14,8 +16,8 @@ class Message {
     }
 }
 
-var test=1
-var ip=(test===0)? "127.0.0.1":"13.125.250.0"
+var test=0
+var ip=(test===0)? "127.0.0.1":"54.180.139.99"
 
 var stompClient = null
 var _gconnectionInfo = null
@@ -42,15 +44,14 @@ function setConnected(connected) {
 function requestMakeRoom(param) {
     $.post({
         url: `http://${ip}:8080/room`,
-        //data: param,
-        data: JSON.stringify({ "maxPersonCount": 5, "roomName": "my room","ownerName":"chulsoo"}),
+        data: JSON.stringify({ "maxPersonCount": 5, "roomName": "my room","ownerName": param?param:"chulsoo"}),
         contentType: "application/json",
         dataType: "json",
         success: function (response) {
             console.info("requestMakeRoom : " + JSON.stringify(response))
 
-            _gconnectionInfo = new ConnectionInfo(response.maxPersonCount, response.ownerId, response.roomId, response.roomName, response.personCount)
-            $("#roomId").text(response.roomId)
+            _gconnectionInfo = new ConnectionInfo(response.maxPersonCount, response.ownerId, response.roomId, response.roomName, response.personCount,response.userList)
+            _gconnectionInfo.user={"userId":response.userList[0].userId,"username":response.userList[0].username};
             connect(_gconnectionInfo)
         },
         error: function (response) {
@@ -62,13 +63,20 @@ function requestMakeRoom(param) {
 function enterRoom(param) {
     $.post({
         url: `http://${ip}:8080/room/enter`,
-        //data: param,
-        data: { "roomId": param.roomId, "senderId": param.senderId },
+        data: JSON.stringify({ "roomId": param.roomId, "username": param.username }),
         contentType: "application/json",
         dataType: "json",
         success: function (response) {
             console.info(JSON.stringify(response))
-            connectionInfo = new ConnectionInfo(response)
+            _gconnectionInfo = new ConnectionInfo()
+            _gconnectionInfo.maxPersonCount = response.maxPersonCount;
+            _gconnectionInfo.ownerId = response.ownerId;
+            _gconnectionInfo.roomName = response.roomName;
+            _gconnectionInfo.roomId = response.roomId;
+            _gconnectionInfo.personCount = response.personCount;
+            _gconnectionInfo.user = response.user;
+            _gconnectionInfo.userList = response.userList;
+            connect(_gconnectionInfo)
         },
         error: function (response) {
             console.info(JSON.stringify(response))
@@ -80,7 +88,7 @@ function leaveRoom(param) {
     $.post({
         url: `http://${ip}:8080/room/leave`,
         //data: param,
-        data: { "roomId": param.roomId, "senderId": param.senderId },
+        data: JSON.stringify({ "roomId": param.roomId, "senderId": param.senderId }),
         contentType: "application/json",
         dataType: "json",
         success: function (response) {
@@ -99,7 +107,7 @@ function deleteRoom() {
         type: "DELETE",
         url: `http://${ip}:8080/room`,
         //TODO: change delete room param
-        data: { "roomId": connectionInfo.roomId, "ownerId": connectionInfo.senderId },
+        data: JSON.stringify({ "roomId": connectionInfo.roomId, "ownerId": connectionInfo.senderId }),
         contentType: "application/json",
         dataType: "json",
         success: function (response) {
@@ -134,8 +142,13 @@ function connect(connectionInfo) {
             alert("Insert room id")
             return
         }
-        connectionInfo = new ConnectionInfo(8, guid(), $("#roomId").val(), "example room")
-        _gconnectionInfo = connectionInfo
+        if ($("#username").val()==null){
+            console.error("Insert user name")
+            alert("Insert room user name")
+            return
+        }
+        //connectionInfo = new ConnectionInfo(8, null, $("#roomId").val(), "example room")
+        //_gconnectionInfo = connectionInfo
     }
     console.info("connecting room : " + JSON.stringify(connectionInfo))
 
@@ -144,15 +157,21 @@ function connect(connectionInfo) {
     stompClient = Stomp.over(socket)
     console.log("stompClient :" + JSON.stringify(stompClient))
 
-    stompClient.connect({"username":"chulsoo","roomId":connectionInfo.roomId}, function (frame) {
+    stompClient.connect({"username":connectionInfo.username,"roomId":connectionInfo.roomId}, function (frame) {
         setConnected(true)
         console.log('Connected: ' + frame)
         console.info('_gconnectionInfo :' + JSON.stringify(getConnectionInfo()))
 
         console.info('_gconnectionInfo room id: ' + getConnectionInfo().roomId)
+        $("#roomId").attr('value',getConnectionInfo().roomId)
+        var roomid = document.getElementById("roomId")
+        roomid.disabled = true
+
+        $("#userId").attr('value',getConnectionInfo().user.userId)
 
         //클라이언트끼리 대화
         stompClient.subscribe(`/subscribe/room/${getConnectionInfo().roomId}/chat`, function (frame) {
+            console.info("frame :"+JSON.stringify(frame))
             addChat(frame.body)
         })
 
@@ -169,9 +188,18 @@ function connect(connectionInfo) {
             addChat("left:"+frame.body);
         })
 
+        //서버와 통신(추후 private/roomId와 합쳐질 수 있음)
+        stompClient.subscribe(`/subscribe/system/private/${getConnectionInfo().user.userId}`, function (frame) {
+            addChat("[User]:"+frame.body);
+        })
+
         //게임서버랑 통신 =>방장:게임을 시작하고, 게임설정(카테고리 설정...)
         stompClient.subscribe(`/subscribe/system/private/${getConnectionInfo().roomId}`, function (frame) {
-            addChat("gameserver :"+frame.body);
+            addChat("[방장]:"+frame.body);
+        })
+
+        stompClient.subscribe(`/subscribe/system/public/${getConnectionInfo().roomId}`, function (frame) {
+            addChat("[모두] :"+frame.body);
         })
     })
 }
@@ -215,14 +243,14 @@ function sendGameStart() {
     // //POST API
     // //http://liargame/methodA '{JSON format}'
     var message = {
-        "senderId":_gconnectionInfo.ownerId,
+        "senderId":_gconnectionInfo.user.userId,
         "message":{
             "method":"startGame",
             "body":
-                JSON.stringify({"round":3,
+                {"round":3,
                 "category":["food"],
                 "turn":1
-            })
+            }
             
         },
         "uuid":guid()
@@ -261,10 +289,87 @@ function sendRoundStart() {
     // //POST API
     // //http://liargame/methodA '{JSON format}'
     var message = {
-        "senderId":_gconnectionInfo.ownerId,
+        "senderId":_gconnectionInfo.user.userId,
         "message":{
-            "method":"startRound",
-            "body":"{}"
+            "method":"startRound"
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/private/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+}
+
+function sendSelectLiar() {
+    var message = {
+        "senderId":_gconnectionInfo.user.userId,
+        "message":{
+            "method":"selectLiar"
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/private/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+}
+
+function sendOpenKeyword() {
+    var message = {
+        "senderId":_gconnectionInfo.user.userId,
+        "message":{
+            "method":"openKeyword"
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/private/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+}
+
+function sendTurnFinish() {
+    var message = {
+        "senderId":_gconnectionInfo.user.userId,
+        "message":{
+            "method":"requestTurnFinished"
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/public/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+}
+
+function sendVoteLiar() {
+    var message = {
+        "senderId":_gconnectionInfo.user.userId,
+        "message":{
+            "method":"voteLiar",
+            "body":{"liar":_gconnectionInfo.ownerId}
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/private/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+}
+
+function sendOpenLiar() {
+    var message = {
+        "senderId":_gconnectionInfo.user.userId,
+        "message":{
+            "method":"openLiar"
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/private/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+}
+
+function sendOpenScores() {
+    var message = {
+        "senderId":_gconnectionInfo.user.userId,
+        "message":{
+            "method":"openLiar"
+        },
+        "uuid":guid()
+    }
+    stompClient.send(`/publish/system/private/${_gconnectionInfo.roomId}`, {}, JSON.stringify(message))
+}
+
+function sendPublishRankings() {
+    var message = {
+        "senderId":_gconnectionInfo.user.userId,
+        "message":{
+            "method":"publishRankings"
         },
         "uuid":guid()
     }
@@ -279,22 +384,32 @@ $(function () {
     $("form").on('submit', function (e) {
         e.preventDefault()
     })
-    $("#make").click(function () { requestMakeRoom(); })
+    $("#make").click(function () { requestMakeRoom($("#username").val()); })
     $("#connect").click(function () { 
-        var param;
-        if($("#roomId").val())
+        var param=new Object();
+        if($("#roomId").val() && $("#username").val())
+        {
             param.roomId = $("#roomId").val()
+            param.username = $("#username").val()
+            console.info(param);
+        }
         else{
             console.error("Insert room id")
             alert("Insert room id")
             return;
         }
-        param.senderId = guid()
-        //enterRoom(param);
-        connect()
+        enterRoom(param);
     })
     $("#disconnect").click(function () { disconnect() })
     $("#send").click(function () { sendChat() })
     $("#game_start").click(function () { sendGameStart() })
     $("#round_start").click(function () { sendRoundStart() })
+    $("#select_liar").click(function () { sendSelectLiar() })
+    $("#open_keyword").click(function () { sendOpenKeyword() })
+    $("#request_turn_finish").click(function () { sendTurnFinish() })
+    $("#vote_liar").click(function () { sendVoteLiar() })
+    $("#open_liar").click(function () { sendOpenKeyword() })
+    $("#check_keyword_correct").click(function () { sendOpenKeyword() })
+    $("#open_scores").click(function () { sendOpenScores() })
+    $("#publish_rankings").click(function () { sendPublishRankings() })
 })

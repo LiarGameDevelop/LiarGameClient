@@ -18,7 +18,7 @@
             <form class="form-inline">
                 <div class="form-group">
                     <label for="connect">방만들기:</label>
-                    <button id="make" class="btn btn-default" type="submit">만들기</button>
+                    <button id="make" class="btn btn-primary" type="submit">만들기</button>
                     </button>
                 </div>
             </form>
@@ -28,10 +28,22 @@
         <div class="col-md-6">
             <form class="form-inline">
                 <div class="form-group">
+                    <label for="connect">유저 이름:</label>
+                    <input type="text" id="username" class="form-control" placeholder="Insert User name">
+                    <label for="connect">유저 아이디:</label>
+                    <input type="text" id="userId" class="form-control" disabled="true">
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-md-6">
+            <form class="form-inline">
+                <div class="form-group">
                     <label for="connect">방접속:</label>
-                    <input type="text" id="roomId" class="form-control" placeholder="Insert RoomId">
-                    <button id="connect" class="btn btn-default" type="submit">Connect</button>
-                    <button id="disconnect" class="btn btn-default" type="submit" disabled="disabled">Disconnect
+                    <input type="text" id="roomId" class="form-control" value="" placeholder="Insert RoomId">
+                    <button id="connect" class="btn btn-primary" type="submit">Connect</button>
+                    <button id="disconnect" class="btn btn-primary" type="submit" disabled="disabled">Disconnect
                     </button>
                 </div>
             </form>
@@ -43,9 +55,17 @@
                 <div class="form-group">
                     <label for="name">TEXT : </label>
                     <input type="text" id="text-data" class="form-control" placeholder="Insert">
-                    <button id="send" class="btn btn-default" type="submit">Send</button>
-                    <button id="game_start" class="btn btn-default" type="submit">game_start</button>
-                    <button id="round_start" class="btn btn-default" type="submit">round_start</button>
+                    <button id="send" class="btn btn-primary" type="submit">보내기</button>
+                    <button id="game_start" class="btn btn-primary" type="submit">게임 시작</button>
+                    <button id="round_start" class="btn btn-primary" type="submit">라운드 시작</button>
+                    <button id="select_liar" class="btn btn-primary" type="submit">라이어 선택</button>
+                    <button id="open_keyword" class="btn btn-primary" type="submit">키워드 오픈</button>
+                    <button id="request_turn_finish" class="btn btn-primary" type="submit">턴종료 요청</button>
+                    <button id="vote_liar" class="btn btn-primary" type="submit">투표 요청</button>
+                    <button id="open_liar" class="btn btn-primary" type="submit">라이어 오픈</button>
+                    <button id="check_keyword_correct" class="btn btn-primary" type="submit">정답 공개 확인요청</button>
+                    <button id="open_scores" class="btn btn-primary" type="submit">점수 공개</button>
+                    <button id="publish_rankings" class="btn btn-primary" type="submit">등수 공개</button>
                 </div>
             </form>
         </div>
