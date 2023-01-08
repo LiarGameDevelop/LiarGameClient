@@ -17,7 +17,7 @@ class Message {
 }
 
 var test=0
-var ip=(test===0)? "127.0.0.1":"54.180.139.99"
+var ip=(test===1)? "127.0.0.1":"43.201.45.154"
 
 var stompClient = null
 var _gconnectionInfo = null
@@ -358,7 +358,7 @@ function sendOpenScores() {
     var message = {
         "senderId":_gconnectionInfo.user.userId,
         "message":{
-            "method":"openLiar"
+            "method":"openScores"
         },
         "uuid":guid()
     }
@@ -408,8 +408,8 @@ $(function () {
     $("#open_keyword").click(function () { sendOpenKeyword() })
     $("#request_turn_finish").click(function () { sendTurnFinish() })
     $("#vote_liar").click(function () { sendVoteLiar() })
-    $("#open_liar").click(function () { sendOpenKeyword() })
-    $("#check_keyword_correct").click(function () { sendOpenKeyword() })
+    $("#open_liar").click(function () { sendOpenLiar() })
+    //$("#check_keyword_correct").click(function () { sendOpenKeyword() })
     $("#open_scores").click(function () { sendOpenScores() })
     $("#publish_rankings").click(function () { sendPublishRankings() })
 })
