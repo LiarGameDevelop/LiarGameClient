@@ -10,9 +10,10 @@ class ConnectionInfo {
     //     this.userList=userList
     //     this.user= null
     // }
-    constructor(room,user,token){
+    constructor(room,user,users,token){
         this.room=room;
         this.user=user;
+        this.users=users;
         this.token=token;
     }
 }
@@ -25,7 +26,7 @@ class Message {
 }
 
 var test=0
-var ip=(test===1)? "127.0.0.1":"43.201.45.154"
+var ip=(test===0)? "127.0.0.1":"3.35.70.119"
 
 var stompClient = null
 var _gconnectionInfo = null
@@ -53,13 +54,13 @@ function setConnected(connected) {
 function requestMakeRoom(param) {
     $.post({
         url: `http://${ip}:8080/room/create`,
-        data: JSON.stringify({ "maxPersonCount": 5, "roomName": "my room","ownerName": param?param:"chulsoo", "password":guid()}),
+        data: JSON.stringify({ "maxPersonCount": 2, "roomName": "my room","ownerName": param?param:"chulsoo", "password":guid()}),
         contentType: "application/json",
         dataType: "JSON",
         success: function (response) {
             console.info("requestMakeRoom response : " + JSON.stringify(response))
 
-            _gconnectionInfo = new ConnectionInfo(response.room,response.user,response.token)
+            _gconnectionInfo = new ConnectionInfo(response.room,response.user,response.users,response.token)
             /* "token": {
                 "grantType": "Bearer",
                 "accessToken": "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiI5MmUzYTE1ZS05OTZmLTQ4MjItYmNmZS1kNDA2ZTNjN2IxMGEyZjRhNDVjMS1kMTVkLTQyMGQtYjAzYi0yYmM3Njk4N2Y2NzkiLCJhdXRoIjoiUk9MRV9VU0VSIiwiZXhwIjoxNjc0NTU5MDM1fQ.51ljQIuFAMTEUnC6dD5_a9RX3injIHbed5tShItsL54f15a1D1uVWe0jpj0j3lozjJCl4xqISagmh0vPsbrfYw",
@@ -82,7 +83,7 @@ function enterRoom(param) {
         dataType: "JSON",
         success: function (response) {
             console.info(JSON.stringify(response))
-            _gconnectionInfo = new ConnectionInfo(response.room,response.user,response.token)
+            _gconnectionInfo = new ConnectionInfo(response.room,response.user,response.users,response.token)
             connect(_gconnectionInfo)
         },
         error: function (response) {
@@ -95,13 +96,15 @@ function leaveRoom(param) {
     $.post({
         url: `http://${ip}:8080/room/leave`,
         //data: param,
-        data: JSON.stringify({ "roomId": param.roomId, "senderId": param.senderId }),
+        data: JSON.stringify({ "roomId": _gconnectionInfo.room.roomId, "userId": _gconnectionInfo.user.userId }),
         contentType: "application/json",
         dataType: "JSON",
+        headers: {
+            Authorization: 'Bearer ' + _gconnectionInfo.token.accessToken
+        },
         success: function (response) {
             console.info(JSON.stringify(response))
-            connectionInfo = new ConnectionInfo(response)
-            connect(connectionInfo)
+            disconnect()
         },
         error: function (response) {
             console.info(JSON.stringify(response))
@@ -139,9 +142,23 @@ function getRoom(roomId) {
         success: function (response) {
             //connect()
             console.info(JSON.stringify(response))
-            response.users.forEach(user => {
+            response.userList.forEach(user => {
                 users.push(user)
             });
+        },
+        error: function (response) {
+            console.info(JSON.stringify(response))
+        }
+    })
+}
+
+
+function getCategory(roomId) {
+    $.get({
+        url: `http://${ip}:8080/game/categories`,
+        dataType:"JSON",
+        success: function (response) {
+            console.info(JSON.stringify(response))
         },
         error: function (response) {
             console.info(JSON.stringify(response))
@@ -187,38 +204,35 @@ function connect(connectionInfo) {
         getRoom(_gconnectionInfo.room.roomId)
 
         //클라이언트끼리 대화
-        stompClient.subscribe(`/subscribe/room/${getConnectionInfo().room.roomId}/chat`, function (frame) {
+        stompClient.subscribe(`/topic/room.${getConnectionInfo().room.roomId}.chat`, function (frame) {
             console.info("frame :"+JSON.stringify(frame))
             addChat(frame.body)
         },{"Authorization": `${_gconnectionInfo.token.grantType} ${_gconnectionInfo.token.accessToken}`})
 
         //사람 들어온것 =>웹소켓, STOMP 연결하면 자동으로 날라오는것.
-        stompClient.subscribe(`/subscribe/room.login/${getConnectionInfo().room.roomId}`, function (frame) {
+        stompClient.subscribe(`/topic/room.${getConnectionInfo().room.roomId}.login`, function (frame) {
             //addChat(greeting)
             console.info(`Someone entered in room id ${getConnectionInfo().room.roomId}`)
             addChat("entered:"+frame.body);
+            frame.body
         },{"Authorization": `${_gconnectionInfo.token.grantType} ${_gconnectionInfo.token.accessToken}`})
 
         //사람 나간것
-        stompClient.subscribe(`/subscribe/room.logout/${getConnectionInfo().room.roomId}`, function (frame) {
+        stompClient.subscribe(`/topic/room.${getConnectionInfo().room.roomId}.logout`, function (frame) {
             console.info(`Someone left from room id ${getConnectionInfo().room.roomId}`)
             addChat("left:"+frame.body);
         },{"Authorization": `${_gconnectionInfo.token.grantType} ${_gconnectionInfo.token.accessToken}`})
 
-        //서버와 통신(추후 private/roomId와 합쳐질 수 있음)
-        stompClient.subscribe(`/subscribe/private/${getConnectionInfo().user.userId}`, function (frame) {
+        stompClient.subscribe(`/exchange/message.direct/room.${getConnectionInfo().room.roomId}.user.${getConnectionInfo().user.userId}`, function (frame) {
             addChat("[User]:"+frame.body);
         },{"Authorization": `${_gconnectionInfo.token.grantType} ${_gconnectionInfo.token.accessToken}`})
 
-        //게임서버랑 통신 =>방장:게임을 시작하고, 게임설정(카테고리 설정...)
-        // if(getConnectionInfo().room.ownerId==getConnectionInfo().user.userId){
-        //     stompClient.subscribe(`/subscribe/private/${getConnectionInfo().room.roomId}`, function (frame) {
-        //         addChat("[방장]:"+frame.body);
-        //     },{"Authorization": `${_gconnectionInfo.token.grantType} ${_gconnectionInfo.token.accessToken}`})
-        // }
-
-        stompClient.subscribe(`/subscribe/public/${getConnectionInfo().room.roomId}`, function (frame) {
+        stompClient.subscribe(`/topic/room.${getConnectionInfo().room.roomId}.user.*`, function (frame) {
             addChat("[모두] :"+frame.body);
+        },{"Authorization": `${_gconnectionInfo.token.grantType} ${_gconnectionInfo.token.accessToken}`})
+
+        stompClient.subscribe(`/exchange/message.error/user.${getConnectionInfo().user.userId}`, function (frame) {
+            addChat("[에러] :"+frame.body);
         },{"Authorization": `${_gconnectionInfo.token.grantType} ${_gconnectionInfo.token.accessToken}`})
     })
 }
@@ -252,12 +266,12 @@ function sendGameStart() {
     // console.info(`send info : ${JSON.stringify(message)}`)
 
     // //게임서버용도 추가되어함.
-    // stompClient.send(`/publish/messages/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    // stompClient.send(`/publish.messages/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 
 
     // //서버에 요청하는것
-    // // ws://publish/private/${_gconnectionInfo.room.roomId} '{method:{startGame}, body:{}}'
-    // stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    // // ws://publish/private.${_gconnectionInfo.room.roomId} '{method:{startGame}, body:{}}'
+    // stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
     // //POST API
     // //http://liargame/methodA '{JSON format}'
     var message = {
@@ -273,20 +287,20 @@ function sendGameStart() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendChat() {
     var message = new Message($("#text-data").val(), $("#userId").val())
     //console.info(`send info : ${JSON.stringify(message)}`)
     // //게임서버용도 추가되어함.
-    stompClient.send(`/publish/messages/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/messages.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 
 
     // //서버에 요청하는것
     // // ws://publish/room.system '{method:{startGame}, body:{}}'
     // // ws://publish/room.system/{roomId}/startGame '{body:{}}'
-    // stompClient.send(`/publish/room.system/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    // stompClient.send(`/publish.room.system/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
     // //POST API
     // //http://liargame/methodA '{JSON format}'
 }
@@ -296,13 +310,13 @@ function sendRoundStart() {
     // console.info(`send info : ${JSON.stringify(message)}`)
 
     // //게임서버용도 추가되어함.
-    // stompClient.send(`/publish/messages/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    // stompClient.send(`/publish.messages/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 
 
     // //서버에 요청하는것
     // // ws://publish/room.system '{method:{startGame}, body:{}}'
     // // ws://publish/room.system/{roomId}/startGame '{body:{}}'
-    // stompClient.send(`/publish/room.system/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    // stompClient.send(`/publish.room.system/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
     // //POST API
     // //http://liargame/methodA '{JSON format}'
     var message = {
@@ -312,7 +326,7 @@ function sendRoundStart() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendSelectLiar() {
@@ -323,7 +337,7 @@ function sendSelectLiar() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendOpenKeyword() {
@@ -334,7 +348,7 @@ function sendOpenKeyword() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendTurnFinish() {
@@ -345,7 +359,7 @@ function sendTurnFinish() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendVoteLiar() {
@@ -353,11 +367,11 @@ function sendVoteLiar() {
         "senderId":_gconnectionInfo.user.userId,
         "message":{
             "method":"voteLiar",
-            "body":{"liar":_gconnectionInfo.ownerId}
+            "body":{"liar":_gconnectionInfo.room.ownerId}
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendOpenLiar() {
@@ -368,7 +382,7 @@ function sendOpenLiar() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendCheckKeywordCorrect() {
@@ -380,7 +394,7 @@ function sendCheckKeywordCorrect() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendOpenScores() {
@@ -391,7 +405,7 @@ function sendOpenScores() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function sendPublishRankings() {
@@ -402,7 +416,7 @@ function sendPublishRankings() {
         },
         "uuid":guid()
     }
-    stompClient.send(`/publish/private/${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
+    stompClient.send(`/publish/private.${_gconnectionInfo.room.roomId}`, {}, JSON.stringify(message))
 }
 
 function addChat(message) {
@@ -429,6 +443,7 @@ $(function () {
         }
         enterRoom(param);
     })
+    $("#leave").click(function () { leaveRoom() })
     $("#disconnect").click(function () { disconnect() })
     $("#send").click(function () { sendChat() })
     $("#game_start").click(function () { sendGameStart() })
@@ -441,4 +456,5 @@ $(function () {
     $("#check_keyword_correct").click(function () { sendCheckKeywordCorrect() })
     $("#open_scores").click(function () { sendOpenScores() })
     $("#publish_rankings").click(function () { sendPublishRankings() })
+    $("#get_category").click(function () { getCategory() })
 })
